@@ -14,17 +14,19 @@ def clear_folders():
     """
     Clear all data in the data and results folders.
     """
-    folders_to_clear = ["data", "results"]
+    folders_to_clear = ["data", "results", "results/greedy", "results/dp"]
     
     for folder in folders_to_clear:
         if os.path.exists(folder):
             print(f"Clearing {folder} folder...")
             shutil.rmtree(folder)
-            os.makedirs(folder)
-            print(f"{folder} folder cleared and recreated.")
-        else:
-            print(f"Creating {folder} folder...")
-            os.makedirs(folder)
+            print(f"{folder} folder cleared.")
+    
+    # Recreate the folder structure
+    folders_to_create = ["data", "results", "results/greedy", "results/dp"]
+    for folder in folders_to_create:
+        os.makedirs(folder, exist_ok=True)
+        print(f"{folder} folder created.")
 
 def print_comparison_summary(greedy_results, dp_results):
     """
@@ -118,11 +120,21 @@ def main():
         results, stock_data_dict = run_greedy_simulations(data_folder)
         algorithm_name = "Greedy"
         
+        # Save results to greedy folder
+        save_results_summary(results, "results/greedy/simulation_summary.csv")
+        plot_portfolio_performance(results, stock_data_dict, "results/greedy")
+        create_performance_summary_chart(results, "results/greedy")
+        
     elif algorithm_choice == "2":
         # Run only Dynamic Programming
         print("\nRunning Dynamic Programming simulation on all stock data...")
         results, stock_data_dict = run_dp_simulations(data_folder)
         algorithm_name = "Dynamic Programming"
+        
+        # Save results to dp folder
+        save_results_summary(results, "results/dp/simulation_summary.csv")
+        plot_portfolio_performance(results, stock_data_dict, "results/dp")
+        create_performance_summary_chart(results, "results/dp")
         
     elif algorithm_choice == "3":
         # Run both algorithms
@@ -146,12 +158,14 @@ def main():
         algorithm_name = "Both Algorithms"
         
         # Save individual summaries
-        save_results_summary(greedy_results, "results/greedy_simulation_summary.csv")
-        save_results_summary(dp_results, "results/dp_simulation_summary.csv")
+        save_results_summary(greedy_results, "results/greedy/simulation_summary.csv")
+        save_results_summary(dp_results, "results/dp/simulation_summary.csv")
         
         # Generate individual charts
         plot_portfolio_performance(greedy_results, stock_data_dict, "results/greedy")
         plot_portfolio_performance(dp_results, stock_data_dict, "results/dp")
+        create_performance_summary_chart(greedy_results, "results/greedy")
+        create_performance_summary_chart(dp_results, "results/dp")
         
         # Print detailed comparison
         print_comparison_summary(greedy_results, dp_results)
@@ -162,26 +176,24 @@ def main():
         print("\nRunning Greedy Algorithm simulation on all stock data...")
         results, stock_data_dict = run_greedy_simulations(data_folder)
         algorithm_name = "Greedy"
+        
+        # Save results to greedy folder
+        save_results_summary(results, "results/greedy/simulation_summary.csv")
+        plot_portfolio_performance(results, stock_data_dict, "results/greedy")
+        create_performance_summary_chart(results, "results/greedy")
     
-    # Save results summary
-    save_results_summary(results)
-    
-    # Generate and save portfolio charts
-    print(f"\nGenerating {algorithm_name} portfolio performance charts...")
-    plot_portfolio_performance(results, stock_data_dict)
-    create_performance_summary_chart(results)
-    
-    # Output: overall summary for selected algorithm
-    print("\n" + "="*70)
-    print(f"OVERALL SUMMARY FOR ALL STOCKS ({algorithm_name.upper()} ALGORITHM)")
-    print("="*70)
-    
-    # Loop: through results and print final values and returns
-    for stock_code, portfolio_values in results.items():
-        initial_value = 10000000  # Default initial capital
-        final_value   = portfolio_values.iloc[-1]
-        total_return  = ((final_value - initial_value) / initial_value) * 100
-        print(f"{stock_code}: Final Value: {final_value:,.2f}, Return: {total_return:.2f}%")
+    # Output: overall summary for selected algorithm (only for single algorithm runs)
+    if algorithm_choice in ["1", "2"] or (algorithm_choice not in ["1", "2", "3"]):
+        print("\n" + "="*70)
+        print(f"OVERALL SUMMARY FOR ALL STOCKS ({algorithm_name.upper()} ALGORITHM)")
+        print("="*70)
+        
+        # Loop: through results and print final values and returns
+        for stock_code, portfolio_values in results.items():
+            initial_value = 10000000  # Default initial capital
+            final_value   = portfolio_values.iloc[-1]
+            total_return  = ((final_value - initial_value) / initial_value) * 100
+            print(f"{stock_code}: Final Value: {final_value:,.2f}, Return: {total_return:.2f}%")
 
 if __name__ == "__main__":
     main()
