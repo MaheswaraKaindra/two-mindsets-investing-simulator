@@ -5,10 +5,14 @@
 import yfinance as yf
 import pandas as pd
 import os
+from datetime import datetime, timedelta
 
 # STATIC DEFINITIONS
-START_DATE                  = "2022-06-24"
-END_DATE                    = "2025-06-25"
+# Calculate dynamic dates: 2 years ago to today
+today                       = datetime.now()
+two_years_ago               = today - timedelta(days=730)  # 2 years = 730 days
+START_DATE                  = two_years_ago.strftime("%Y-%m-%d")
+END_DATE                    = today.strftime("%Y-%m-%d")
 
 # FUNCTION DEFINITIONS
 if not os.path.exists("data"):
