@@ -58,18 +58,17 @@ def run_dp_simulations(data_folder="data", initial_capital=10000000, use_multipr
 
 def dynamic_programming_simulator(stock_data, initial_capital=10000000):
     """
-    Simulate investment strategy using realistic Dynamic Programming approach.
-    This version properly tracks cash and shares without creating phantom money.
-    Uses multiple transaction DP algorithm with proper buy-hold-sell cycles.
+    Simulate investment strategy using Dynamic Programming approach.
     """
-    print("Running DP strategy (Realistic model)...")
+    print("Running DP strategy...")
     
     prices = stock_data['Close'].to_numpy()
     n = len(prices)
     if n < 2:
         return pd.Series([initial_capital] * n, index=stock_data.index)
 
-    # === REALISTIC DYNAMIC PROGRAMMING APPROACH ===
+    # DYNAMIC PROGRAMMING APPROACH
+
     # State variables for each day:
     # cash[i] = maximum cash we can have on day i (not holding any stock)
     # hold[i] = maximum value we can have on day i (holding stock)
@@ -93,7 +92,7 @@ def dynamic_programming_simulator(stock_data, initial_capital=10000000):
         # Keep holding stock OR buy stock with yesterday's cash
         hold[i] = max(hold[i-1], cash[i-1] - price)
     
-    # === RECONSTRUCT OPTIMAL PATH ===
+    # RECONSTRUCT OPTIMAL PATH
     # Work backwards to find the actual buy/sell sequence
     transactions = []
     i = n - 1
@@ -103,23 +102,18 @@ def dynamic_programming_simulator(stock_data, initial_capital=10000000):
     
     while i > 0:
         if current_state == 'cash':
-            # Check if we got here by selling
             if cash[i] == hold[i-1] + prices[i] and hold[i-1] > -float('inf'):
                 transactions.append(('sell', i, prices[i]))
                 current_state = 'hold'
-            # Otherwise we stayed in cash
         else:  # current_state == 'hold'
-            # Check if we got here by buying
             if hold[i] == cash[i-1] - prices[i]:
                 transactions.append(('buy', i, prices[i]))
                 current_state = 'cash'
-            # Otherwise we kept holding
         i -= 1
     
-    # Reverse to get chronological order
     transactions.reverse()
     
-    # === SIMULATE ACTUAL TRADING ===
+    # SIMULATE ACTUAL TRADING
     current_cash = initial_capital
     current_shares = 0
     portfolio_values = [initial_capital]
@@ -130,7 +124,6 @@ def dynamic_programming_simulator(stock_data, initial_capital=10000000):
         price = prices[i]
         date_str = stock_data.index[i].strftime('%Y-%m-%d')
         
-        # Check if we have a transaction on this day
         if transaction_idx < len(transactions) and transactions[transaction_idx][1] == i:
             action, day, transaction_price = transactions[transaction_idx]
             
