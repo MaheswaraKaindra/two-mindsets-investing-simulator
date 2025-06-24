@@ -60,14 +60,14 @@ def dynamic_programming_simulator(stock_data, initial_capital=10000000):
     """
     Simulate investment strategy using Dynamic Programming approach.
     """
-    print("Running DP strategy...")
+    print("Running DP strategy (Realistic model)...")
     
     prices = stock_data['Close'].to_numpy()
     n = len(prices)
     if n < 2:
         return pd.Series([initial_capital] * n, index=stock_data.index)
 
-    # DYNAMIC PROGRAMMING APPROACH
+    # DYNAMIC PROGRAMMING APPROACH FOR ALL-IN TRADING
 
     # State variables for each day:
     # cash[i] = maximum cash we can have on day i (not holding any stock)
@@ -78,36 +78,62 @@ def dynamic_programming_simulator(stock_data, initial_capital=10000000):
     
     # Base case: Day 0
     cash[0] = initial_capital
-    hold[0] = -float('inf')  # Can't hold stock on day 0 without buying
+    hold[0] = 0  # Can't hold stock on day 0 without buying
     
-    # Forward pass: Calculate optimal values using classic DP recurrence
+    # Forward pass: Calculate optimal values for all-in trading
     for i in range(1, n):
         price = prices[i]
+        prev_price = prices[i-1]
         
-        # cash[i] = max(cash[i-1], hold[i-1] + price)
-        # Stay in cash OR sell stock we held yesterday
-        cash[i] = max(cash[i-1], hold[i-1] + price)
+        # Option 1: Stay in cash (no action)
+        cash_stay = cash[i-1]
         
-        # hold[i] = max(hold[i-1], cash[i-1] - price)  
-        # Keep holding stock OR buy stock with yesterday's cash
-        hold[i] = max(hold[i-1], cash[i-1] - price)
+        # Option 2: Sell all holdings (if we had any)
+        cash_sell = 0
+        if hold[i-1] > 0:
+            # Value of holdings adjusts with price change
+            cash_sell = hold[i-1] * price / prev_price
+        
+        cash[i] = max(cash_stay, cash_sell)
+        
+        # Option 1: Keep holding (value adjusts with price)
+        hold_keep = 0
+        if hold[i-1] > 0:
+            hold_keep = hold[i-1] * price / prev_price
+        
+        # Option 2: Buy all-in with yesterday's cash
+        hold_buy = cash[i-1]
+        
+        hold[i] = max(hold_keep, hold_buy)
     
     # RECONSTRUCT OPTIMAL PATH
     # Work backwards to find the actual buy/sell sequence
     transactions = []
     i = n - 1
     
-    # We end in cash state (sell all holdings)
-    current_state = 'cash'
+    # Determine final state - choose the better option
+    if cash[n-1] > hold[n-1]:
+        current_state = 'cash'
+    else:
+        current_state = 'hold'
+        # Add final sell transaction
+        transactions.append(('sell', n-1, prices[n-1]))
     
     while i > 0:
+        price = prices[i]
+        prev_price = prices[i-1]
+        
         if current_state == 'cash':
-            if cash[i] == hold[i-1] + prices[i] and hold[i-1] > -float('inf'):
-                transactions.append(('sell', i, prices[i]))
-                current_state = 'hold'
+            # Check if we got here by selling
+            if hold[i-1] > 0:
+                cash_from_sell = hold[i-1] * price / prev_price
+                if abs(cash[i] - cash_from_sell) < abs(cash[i] - cash[i-1]):
+                    transactions.append(('sell', i, price))
+                    current_state = 'hold'
         else:  # current_state == 'hold'
-            if hold[i] == cash[i-1] - prices[i]:
-                transactions.append(('buy', i, prices[i]))
+            # Check if we got here by buying
+            if abs(hold[i] - cash[i-1]) < 1e-6:
+                transactions.append(('buy', i, price))
                 current_state = 'cash'
         i -= 1
     
