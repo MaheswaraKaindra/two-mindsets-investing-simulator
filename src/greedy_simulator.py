@@ -8,17 +8,36 @@ import os
 import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime
+from multiprocessing import Pool, cpu_count
+import functools
 from .data_manager import load_all_stock_data
 
 # FUNCTION DEFINITIONS
-def run_greedy_simulations(data_folder="data", initial_capital=10000000, sma_window=5):
+def process_single_stock_greedy(args):
     """
-    Run greedy simulation on all stocks in the data folder.
+    Process a single stock with greedy algorithm - helper function for multiprocessing.
+    
+    Args:
+        args (tuple): (stock_code, stock_df, initial_capital, sma_window)
+    
+    Returns:
+        tuple: (stock_code, portfolio_values)
+    """
+    stock_code, stock_df, initial_capital, sma_window = args
+    
+    portfolio_values = greedy_simulator(stock_df, initial_capital, sma_window)
+    
+    return stock_code, portfolio_values
+
+def run_greedy_simulations(data_folder="data", initial_capital=10000000, sma_window=5, use_multiprocess=True):
+    """
+    Run greedy simulation on all stocks in the data folder using multiprocessing.
     
     Args:
         data_folder (str): Path to the folder containing CSV files.
         initial_capital (float): Initial capital for trading.
         sma_window (int): Window size for the Simple Moving Average.
+        use_multiprocess (bool): Whether to use multiprocessing for faster execution.
     
     Returns:
         tuple: (results_dict, stock_data_dict) where results_dict contains portfolio series 
@@ -27,23 +46,27 @@ def run_greedy_simulations(data_folder="data", initial_capital=10000000, sma_win
     all_stock_data = load_all_stock_data(data_folder)
     results        = {}
     
-    for stock_code, stock_df in all_stock_data.items():
-        print(f"\n{'='*50}")
-        print(f"Running simulation for {stock_code}")
-        print(f"{'='*50}")
+    if not all_stock_data:
+        return results, all_stock_data
+    
+    if use_multiprocess and len(all_stock_data) > 1:
+        num_processes = min(cpu_count(), len(all_stock_data))
         
-        portfolio_values = greedy_simulator(stock_df, initial_capital, sma_window)
-        results[stock_code] = portfolio_values
+        args_list = [(stock_code, stock_df, initial_capital, sma_window) 
+                    for stock_code, stock_df in all_stock_data.items()]
         
-        # Summary: initial and final portfolio values, total return
-        initial_value = initial_capital
-        final_value   = portfolio_values.iloc[-1]
-        total_return  = ((final_value - initial_value) / initial_value) * 100
+        with Pool(processes=num_processes) as pool:
+            results_list = pool.map(process_single_stock_greedy, args_list)
         
-        print(f"\nSUMMARY for {stock_code}:")
-        print(f"Initial Capital: {initial_value:,.2f}")
-        print(f"Final Portfolio Value: {final_value:,.2f}")
-        print(f"Total Return: {total_return:.2f}%")
+        for stock_code, portfolio_values in results_list:
+            results[stock_code] = portfolio_values
+            
+    else:
+        for stock_code, stock_df in all_stock_data.items():
+            stock_code, portfolio_values = process_single_stock_greedy(
+                (stock_code, stock_df, initial_capital, sma_window)
+            )
+            results[stock_code] = portfolio_values
     
     return results, all_stock_data
 

@@ -7,6 +7,9 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+from multiprocessing import Pool, cpu_count
+from multiprocessing import Pool, cpu_count
+import functools
 
 # FUNCTION DEFINITIONS
 def load_all_stock_data(data_folder="data"):
@@ -76,58 +79,31 @@ def save_results_summary(results, output_file="results/simulation_summary.csv"):
     print(f"\nResults summary saved to: {output_file}")
     return summary_df
 
-def plot_portfolio_performance(results, stock_data_dict, output_folder="results"):
+def plot_portfolio_performance(results, stock_data_dict, output_folder="results", use_multiprocess=True):
     """
-    Create and save portfolio performance plots for all stocks.
+    Create and save portfolio performance plots for all stocks using multiprocessing.
     
     Args:
         results (dict): Dictionary with stock codes as keys and portfolio series as values.
         stock_data_dict (dict): Dictionary with stock codes as keys and stock DataFrames as values.
         output_folder (str): Folder to save the plot images.
+        use_multiprocess (bool): Whether to use multiprocessing for faster chart generation.
     """
     # Create output folder if it doesn't exist
     os.makedirs(output_folder, exist_ok=True)
     
-    # Set the style for better-looking plots
-    plt.style.use('seaborn-v0_8')
-    sns.set_palette("husl")
-    
-    # Create individual plots for each stock
-    for stock_code, portfolio_values in results.items():
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
+    if use_multiprocess and len(results) > 1:
+        num_processes = min(cpu_count(), len(results))
         
-        # Plot 1: Stock Price and SMA
-        stock_data      = stock_data_dict[stock_code]
-        stock_data['SMA'] = stock_data['Close'].rolling(window=5).mean()
+        args_list = [(stock_code, portfolio_values, stock_data_dict[stock_code], output_folder) 
+                    for stock_code, portfolio_values in results.items()]
         
-        ax1.plot(stock_data.index, stock_data['Close'], label='Stock Price', linewidth=2, alpha=0.8)
-        ax1.plot(stock_data.index, stock_data['SMA'], label='SMA (5 days)', linewidth=2, alpha=0.8)
-        ax1.set_title(f'{stock_code} - Stock Price and Moving Average', fontsize=14, fontweight='bold')
-        ax1.set_ylabel('Price (IDR)', fontsize=12)
-        ax1.legend()
-        ax1.grid(True, alpha=0.3)
+        with Pool(processes=num_processes) as pool:
+            file_paths = pool.map(create_single_stock_plot, args_list)
         
-        # Plot 2: Portfolio Value Over Time
-        ax2.plot(portfolio_values.index, portfolio_values.values, 
-                label=f'{stock_code} Portfolio', linewidth=2, color='green', alpha=0.8)
-        ax2.axhline(y=10000000, color='red', linestyle='--', alpha=0.7, label='Initial Capital')
-        ax2.set_title(f'{stock_code} - Portfolio Value Over Time', fontsize=14, fontweight='bold')
-        ax2.set_xlabel('Date', fontsize=12)
-        ax2.set_ylabel('Portfolio Value (IDR)', fontsize=12)
-        ax2.legend()
-        ax2.grid(True, alpha=0.3)
-        
-        # Format y-axis to show values in millions
-        ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x/1e6:.1f}M'))
-        
-        plt.tight_layout()
-        
-        # Save the plot
-        filename = f'{stock_code}_portfolio_analysis.png'
-        filepath = os.path.join(output_folder, filename)
-        plt.savefig(filepath, dpi=300, bbox_inches='tight')
-        print(f"Saved individual analysis for {stock_code}: {filepath}")
-        plt.close()
+    else:
+        for stock_code, portfolio_values in results.items():
+            create_single_stock_plot((stock_code, portfolio_values, stock_data_dict[stock_code], output_folder))
     
     # Create a combined comparison plot
     create_combined_portfolio_plot(results, output_folder)
@@ -173,7 +149,6 @@ def create_combined_portfolio_plot(results, output_folder="results"):
     filename = 'combined_portfolio_comparison.png'
     filepath = os.path.join(output_folder, filename)
     plt.savefig(filepath, dpi=300, bbox_inches='tight')
-    print(f"Saved combined comparison plot: {filepath}")
     plt.close()
 
 def create_performance_summary_chart(results, output_folder="results"):
@@ -219,5 +194,55 @@ def create_performance_summary_chart(results, output_folder="results"):
     filename = 'returns_summary_chart.png'
     filepath = os.path.join(output_folder, filename)
     plt.savefig(filepath, dpi=300, bbox_inches='tight')
-    print(f"Saved returns summary chart: {filepath}")
     plt.close()
+
+def create_single_stock_plot(args):
+    """
+    Create a plot for a single stock - helper function for multiprocessing.
+    
+    Args:
+        args (tuple): (stock_code, portfolio_values, stock_data, output_folder)
+    
+    Returns:
+        str: Path to the saved plot file
+    """
+    stock_code, portfolio_values, stock_data, output_folder = args
+    
+    # Set the style for better-looking plots
+    plt.style.use('seaborn-v0_8')
+    sns.set_palette("husl")
+    
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
+    
+    # Plot 1: Stock Price and SMA
+    stock_data['SMA'] = stock_data['Close'].rolling(window=5).mean()
+    
+    ax1.plot(stock_data.index, stock_data['Close'], label='Stock Price', linewidth=2, alpha=0.8)
+    ax1.plot(stock_data.index, stock_data['SMA'], label='SMA (5 days)', linewidth=2, alpha=0.8)
+    ax1.set_title(f'{stock_code} - Stock Price and Moving Average', fontsize=14, fontweight='bold')
+    ax1.set_ylabel('Price (IDR)', fontsize=12)
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
+    
+    # Plot 2: Portfolio Value Over Time
+    ax2.plot(portfolio_values.index, portfolio_values.values, 
+            label=f'{stock_code} Portfolio', linewidth=2, color='green', alpha=0.8)
+    ax2.axhline(y=10000000, color='red', linestyle='--', alpha=0.7, label='Initial Capital')
+    ax2.set_title(f'{stock_code} - Portfolio Value Over Time', fontsize=14, fontweight='bold')
+    ax2.set_xlabel('Date', fontsize=12)
+    ax2.set_ylabel('Portfolio Value (IDR)', fontsize=12)
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
+    
+    # Format y-axis to show values in millions
+    ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x/1e6:.1f}M'))
+    
+    plt.tight_layout()
+    
+    # Save the plot
+    filename = f'{stock_code}_portfolio_analysis.png'
+    filepath = os.path.join(output_folder, filename)
+    plt.savefig(filepath, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    return filepath
