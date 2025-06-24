@@ -8,14 +8,13 @@ import os
 import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime
-from multiprocessing import Pool, cpu_count
 import functools
 from .data_manager import load_all_stock_data
 
 # FUNCTION DEFINITIONS
 def process_single_stock_dp(args):
     """
-    Process a single stock with Dynamic Programming algorithm - helper function for multiprocessing.
+    Process a single stock with Dynamic Programming algorithm.
     
     Args:
         args (tuple): (stock_code, stock_df, initial_capital)
@@ -29,14 +28,14 @@ def process_single_stock_dp(args):
     
     return stock_code, portfolio_values
 
-def run_dp_simulations(data_folder="data", initial_capital=10000000, use_multiprocess=True):
+def run_dp_simulations(data_folder="data", initial_capital=10000000, use_multiprocess=False):
     """
-    Run Dynamic Programming simulation on all stocks in the data folder using multiprocessing.
+    Run Dynamic Programming simulation on all stocks in the data folder sequentially.
     
     Args:
         data_folder (str): Path to the folder containing CSV files.
         initial_capital (float): Initial capital for trading.
-        use_multiprocess (bool): Whether to use multiprocessing for faster execution.
+        use_multiprocess (bool): Legacy parameter, ignored (always runs sequentially).
     
     Returns:
         tuple: (results_dict, stock_data_dict) where results_dict contains portfolio series 
@@ -48,114 +47,126 @@ def run_dp_simulations(data_folder="data", initial_capital=10000000, use_multipr
     if not all_stock_data:
         return results, all_stock_data
     
-    if use_multiprocess and len(all_stock_data) > 1:
-        num_processes = min(cpu_count(), len(all_stock_data))
-        
-        args_list = [(stock_code, stock_df, initial_capital) 
-                    for stock_code, stock_df in all_stock_data.items()]
-        
-        with Pool(processes=num_processes) as pool:
-            results_list = pool.map(process_single_stock_dp, args_list)
-        
-        for stock_code, portfolio_values in results_list:
-            results[stock_code] = portfolio_values
-            
-    else:
-        for stock_code, stock_df in all_stock_data.items():
-            stock_code, portfolio_values = process_single_stock_dp(
-                (stock_code, stock_df, initial_capital)
-            )
-            results[stock_code] = portfolio_values
+    # Process each stock sequentially
+    for stock_code, stock_df in all_stock_data.items():
+        stock_code, portfolio_values = process_single_stock_dp(
+            (stock_code, stock_df, initial_capital)
+        )
+        results[stock_code] = portfolio_values
     
     return results, all_stock_data
 
 def dynamic_programming_simulator(stock_data, initial_capital=10000000):
     """
-    Simulate a patient investor strategy using Dynamic Programming approach.
-
-    Methodology:
-    1. Analysis Phase (DP): Analyze all historical data to find
-       one pair of buy and sell dates that provides maximum profit
-       from a single transaction cycle.
-    2. Simulation Phase: Run daily simulation where buy and sell
-       actions are only executed on the optimal dates found.
-
-    Args:
-        stock_data (pd.DataFrame): DataFrame containing daily stock price data.
-        initial_capital (float): Initial capital for simulation.
-
-    Returns:
-        pd.Series: A Series containing portfolio value history for each day.
+    Simulate investment strategy using realistic Dynamic Programming approach.
+    This version properly tracks cash and shares without creating phantom money.
+    Uses multiple transaction DP algorithm with proper buy-hold-sell cycles.
     """
-    print("Running Dynamic Programming strategy (Two-Phase method)...")
+    print("Running DP strategy (Realistic model)...")
     
-    prices = stock_data['Close']
+    prices = stock_data['Close'].to_numpy()
     n = len(prices)
-    
     if n < 2:
-        print("Insufficient data for simulation.")
         return pd.Series([initial_capital] * n, index=stock_data.index)
 
-    # === PHASE 1: Find Best Buy and Sell Days (DP Logic) ===
-    min_price_so_far = float('inf')
-    max_profit = 0
-    best_buy_date = None
-    best_sell_date = None
+    # === REALISTIC DYNAMIC PROGRAMMING APPROACH ===
+    # State variables for each day:
+    # cash[i] = maximum cash we can have on day i (not holding any stock)
+    # hold[i] = maximum value we can have on day i (holding stock)
     
-    # Variable to store temporary buy date when lowest price is found
-    temp_buy_date = prices.index[0]
-
-    for i in range(n):
-        current_date = prices.index[i]
-        current_price = prices.iloc[i]
-
-        # If current price is lower than previous minimum, record as potential buy point
-        if current_price < min_price_so_far:
-            min_price_so_far = current_price
-            temp_buy_date = current_date
-
-        # Calculate potential profit if selling stock bought at minimum price today
-        potential_profit = current_price - min_price_so_far
-
-        # If this potential profit is the largest so far, save this transaction
-        if potential_profit > max_profit:
-            max_profit = potential_profit
-            best_buy_date = temp_buy_date
-            best_sell_date = current_date
-            
-    # If no profit can be made (price keeps falling)
-    if best_buy_date is None:
-        print("No profitable transaction opportunity found. No actions taken.")
-        return pd.Series([initial_capital] * n, index=stock_data.index)
-        
-    print(f"Optimal transaction found: Buy on {best_buy_date.date()} & Sell on {best_sell_date.date()}")
+    cash = np.zeros(n)
+    hold = np.zeros(n)
     
-    cash = initial_capital
-    shares = 0
-    portfolio_values = []
-
-    for i in range(n):
-        current_date = prices.index[i]
-        price_today = prices.iloc[i]
-
-        # Buy action only on the predetermined best day
-        if current_date == best_buy_date:
-            shares_to_buy = cash // price_today
-            cost = shares_to_buy * price_today
-            cash -= cost
-            shares += shares_to_buy
-            print(f"{current_date.strftime('%Y-%m-%d')}: Bought {shares_to_buy:.1f} shares at {price_today:.2f}, Cash left: {cash:.2f}")
+    # Base case: Day 0
+    cash[0] = initial_capital
+    hold[0] = -float('inf')  # Can't hold stock on day 0 without buying
+    
+    # Forward pass: Calculate optimal values using classic DP recurrence
+    for i in range(1, n):
+        price = prices[i]
         
-        # Sell action only on the predetermined best day
-        elif current_date == best_sell_date:
-            sale_value = shares * price_today
-            cash += sale_value
-            print(f"{current_date.strftime('%Y-%m-%d')}: Sold {shares:.1f} shares at {price_today:.2f}, Cash now: {cash:.2f}")
-            shares = 0
+        # cash[i] = max(cash[i-1], hold[i-1] + price)
+        # Stay in cash OR sell stock we held yesterday
+        cash[i] = max(cash[i-1], hold[i-1] + price)
+        
+        # hold[i] = max(hold[i-1], cash[i-1] - price)  
+        # Keep holding stock OR buy stock with yesterday's cash
+        hold[i] = max(hold[i-1], cash[i-1] - price)
+    
+    # === RECONSTRUCT OPTIMAL PATH ===
+    # Work backwards to find the actual buy/sell sequence
+    transactions = []
+    i = n - 1
+    
+    # We end in cash state (sell all holdings)
+    current_state = 'cash'
+    
+    while i > 0:
+        if current_state == 'cash':
+            # Check if we got here by selling
+            if cash[i] == hold[i-1] + prices[i] and hold[i-1] > -float('inf'):
+                transactions.append(('sell', i, prices[i]))
+                current_state = 'hold'
+            # Otherwise we stayed in cash
+        else:  # current_state == 'hold'
+            # Check if we got here by buying
+            if hold[i] == cash[i-1] - prices[i]:
+                transactions.append(('buy', i, prices[i]))
+                current_state = 'cash'
+            # Otherwise we kept holding
+        i -= 1
+    
+    # Reverse to get chronological order
+    transactions.reverse()
+    
+    # === SIMULATE ACTUAL TRADING ===
+    current_cash = initial_capital
+    current_shares = 0
+    portfolio_values = [initial_capital]
+    
+    transaction_idx = 0
+    
+    for i in range(1, n):
+        price = prices[i]
+        date_str = stock_data.index[i].strftime('%Y-%m-%d')
+        
+        # Check if we have a transaction on this day
+        if transaction_idx < len(transactions) and transactions[transaction_idx][1] == i:
+            action, day, transaction_price = transactions[transaction_idx]
             
-        # Calculate total portfolio value at the end of each day
-        current_portfolio_value = cash + (shares * price_today)
-        portfolio_values.append(current_portfolio_value)
+            if action == 'buy' and current_shares == 0:
+                # Buy as many shares as possible
+                shares_to_buy = current_cash // price
+                if shares_to_buy > 0:
+                    cost = shares_to_buy * price
+                    current_cash -= cost
+                    current_shares += shares_to_buy
+                    print(f"{date_str}: Bought {shares_to_buy:.0f} shares at {price:.2f}, Cash left: {current_cash:.2f}")
+            
+            elif action == 'sell' and current_shares > 0:
+                # Sell all shares
+                sale_value = current_shares * price
+                current_cash += sale_value
+                print(f"{date_str}: Sold {current_shares:.0f} shares at {price:.2f}, Cash now: {current_cash:.2f}")
+                current_shares = 0
+            
+            transaction_idx += 1
+        
+        # Calculate portfolio value (cash + stock value)
+        portfolio_value = current_cash + (current_shares * price)
+        portfolio_values.append(portfolio_value)
+    
+    # Sell any remaining shares at the end
+    if current_shares > 0:
+        final_price = prices[-1]
+        sale_value = current_shares * final_price
+        current_cash += sale_value
+        date_str = stock_data.index[-1].strftime('%Y-%m-%d')
+        print(f"{date_str}: Final sale - Sold {current_shares:.0f} shares at {final_price:.2f}, Final cash: {current_cash:.2f}")
+        portfolio_values[-1] = current_cash
 
-    print(f"Final Portofolio Value: {portfolio_values[-1]:,.0f}")
+    final_value = portfolio_values[-1]
+    print(f"Final Portfolio Value: {final_value:,.0f}")
+    print(f"Total Return: {((final_value / initial_capital) - 1) * 100:.2f}%")
+    
     return pd.Series(portfolio_values, index=stock_data.index)

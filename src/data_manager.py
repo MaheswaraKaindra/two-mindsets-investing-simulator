@@ -7,8 +7,6 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from multiprocessing import Pool, cpu_count
-from multiprocessing import Pool, cpu_count
 import functools
 
 # FUNCTION DEFINITIONS
@@ -79,31 +77,22 @@ def save_results_summary(results, output_file="results/simulation_summary.csv"):
     print(f"\nResults summary saved to: {output_file}")
     return summary_df
 
-def plot_portfolio_performance(results, stock_data_dict, output_folder="results", use_multiprocess=True):
+def plot_portfolio_performance(results, stock_data_dict, output_folder="results", use_multiprocess=False):
     """
-    Create and save portfolio performance plots for all stocks using multiprocessing.
+    Create and save portfolio performance plots for all stocks sequentially.
     
     Args:
         results (dict): Dictionary with stock codes as keys and portfolio series as values.
         stock_data_dict (dict): Dictionary with stock codes as keys and stock DataFrames as values.
         output_folder (str): Folder to save the plot images.
-        use_multiprocess (bool): Whether to use multiprocessing for faster chart generation.
+        use_multiprocess (bool): Legacy parameter, ignored (always runs sequentially).
     """
     # Create output folder if it doesn't exist
     os.makedirs(output_folder, exist_ok=True)
     
-    if use_multiprocess and len(results) > 1:
-        num_processes = min(cpu_count(), len(results))
-        
-        args_list = [(stock_code, portfolio_values, stock_data_dict[stock_code], output_folder) 
-                    for stock_code, portfolio_values in results.items()]
-        
-        with Pool(processes=num_processes) as pool:
-            file_paths = pool.map(create_single_stock_plot, args_list)
-        
-    else:
-        for stock_code, portfolio_values in results.items():
-            create_single_stock_plot((stock_code, portfolio_values, stock_data_dict[stock_code], output_folder))
+    # Process each stock sequentially
+    for stock_code, portfolio_values in results.items():
+        create_single_stock_plot((stock_code, portfolio_values, stock_data_dict[stock_code], output_folder))
     
     # Create a combined comparison plot
     create_combined_portfolio_plot(results, output_folder)
@@ -198,7 +187,7 @@ def create_performance_summary_chart(results, output_folder="results"):
 
 def create_single_stock_plot(args):
     """
-    Create a plot for a single stock - helper function for multiprocessing.
+    Create a plot for a single stock.
     
     Args:
         args (tuple): (stock_code, portfolio_values, stock_data, output_folder)

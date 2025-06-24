@@ -8,14 +8,13 @@ import os
 import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime
-from multiprocessing import Pool, cpu_count
 import functools
 from .data_manager import load_all_stock_data
 
 # FUNCTION DEFINITIONS
 def process_single_stock_greedy(args):
     """
-    Process a single stock with greedy algorithm - helper function for multiprocessing.
+    Process a single stock with greedy algorithm.
     
     Args:
         args (tuple): (stock_code, stock_df, initial_capital, sma_window)
@@ -29,15 +28,15 @@ def process_single_stock_greedy(args):
     
     return stock_code, portfolio_values
 
-def run_greedy_simulations(data_folder="data", initial_capital=10000000, sma_window=5, use_multiprocess=True):
+def run_greedy_simulations(data_folder="data", initial_capital=10000000, sma_window=5, use_multiprocess=False):
     """
-    Run greedy simulation on all stocks in the data folder using multiprocessing.
+    Run greedy simulation on all stocks in the data folder sequentially.
     
     Args:
         data_folder (str): Path to the folder containing CSV files.
         initial_capital (float): Initial capital for trading.
         sma_window (int): Window size for the Simple Moving Average.
-        use_multiprocess (bool): Whether to use multiprocessing for faster execution.
+        use_multiprocess (bool): Legacy parameter, ignored (always runs sequentially).
     
     Returns:
         tuple: (results_dict, stock_data_dict) where results_dict contains portfolio series 
@@ -49,24 +48,12 @@ def run_greedy_simulations(data_folder="data", initial_capital=10000000, sma_win
     if not all_stock_data:
         return results, all_stock_data
     
-    if use_multiprocess and len(all_stock_data) > 1:
-        num_processes = min(cpu_count(), len(all_stock_data))
-        
-        args_list = [(stock_code, stock_df, initial_capital, sma_window) 
-                    for stock_code, stock_df in all_stock_data.items()]
-        
-        with Pool(processes=num_processes) as pool:
-            results_list = pool.map(process_single_stock_greedy, args_list)
-        
-        for stock_code, portfolio_values in results_list:
-            results[stock_code] = portfolio_values
-            
-    else:
-        for stock_code, stock_df in all_stock_data.items():
-            stock_code, portfolio_values = process_single_stock_greedy(
-                (stock_code, stock_df, initial_capital, sma_window)
-            )
-            results[stock_code] = portfolio_values
+    # Process each stock sequentially
+    for stock_code, stock_df in all_stock_data.items():
+        stock_code, portfolio_values = process_single_stock_greedy(
+            (stock_code, stock_df, initial_capital, sma_window)
+        )
+        results[stock_code] = portfolio_values
     
     return results, all_stock_data
 
